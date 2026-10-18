@@ -1,0 +1,125 @@
+name: check-drift
+
+# Daily (and on demand): compare the real AWS resources with the Terraform state.
+# If something changed outside Terraform, plan what would be restored, notify, wait for approval, then apply.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: terraform-infra
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      drift: ${{ steps.refresh.outputs.drift }}
+    env:
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/tf-init
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+
+
+      - name: Check for drift
+        id: refresh
+        working-directory: infra
+        run: |
+          set +e
+          terraform plan -refresh-only -detailed-exitcode -input=false -lock=false -no-color > /tmp/refresh.txt
+          code=$?
+          set -e
+          # exit codes: 0 = no drift, 1 = error, 2 = drift found
+          if [ "$code" -eq 1 ]; then cat /tmp/refresh.txt; exit 1; fi
+          if [ "$code" -eq 2 ]; then echo "drift=true" >> "$GITHUB_OUTPUT"; else echo "drift=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Plan what would be restored
+        if: steps.refresh.outputs.drift == 'true'
+        working-directory: infra
+        run: |
+          terraform plan -input=false -lock=false -no-color -out=tfplan | tee /tmp/plan.txt
+          {
+            echo "## Drift detected"
+            echo '```'
+            head -c 20000 /tmp/plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "Drift detected in the Terraform-managed infrastructure."
+            echo "Review the plan and approve it to restore the approved state: $RUN_URL"
+            echo
+            head -c 4000 /tmp/plan.txt
+          } > /tmp/email.txt
+
+      - name: Keep the plan for the apply job
+        if: steps.refresh.outputs.drift == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: infra/tfplan
+          retention-days: 1
+
+      - name: Slack
+        if: steps.refresh.outputs.drift == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          msg="Drift detected in the AWS infrastructure. The plan to restore it is waiting for approval: $RUN_URL"
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "$(jq -n --arg text "$msg" '{text: $text}')" "$SLACK_WEBHOOK_URL"
+
+      - name: Email
+        if: steps.refresh.outputs.drift == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Drift detected: approval needed to restore infrastructure"
+          to: ${{ secrets.EMAIL_TO }}
+          from: Terraform pipeline <${{ secrets.SMTP_USERNAME }}>
+          body: file:///tmp/email.txt
+
+  approve:
+    needs: detect
+    if: needs.detect.outputs.drift == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: trstringer/manual-approval@v1
+        timeout-minutes: 60 # the job keeps running while it waits, which uses your free Actions minutes
+        with:
+          secret: ${{ github.token }}
+          approvers: ${{ vars.APPROVERS }}
+          minimum-approvals: 1
+          issue-title: "Approve restoring drifted infrastructure"
+          issue-body: "Drift was detected. The plan is in the run summary: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Reply **approve** to apply it or **deny** to leave the infrastructure as it is."
+
+  apply:
+    needs: approve
+    if: needs.approve.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/tf-init
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: infra
+
+      - name: Restore the approved state
+        working-directory: infra
+        run: terraform apply -input=false tfplan

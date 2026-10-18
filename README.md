@@ -2,29 +2,19 @@
 
 **What it builds:** VPC, 2 public + 2 private subnets, internet gateway, one `t3.micro` EC2 instance (no inbound ports, access via SSM Session Manager), one `db.t4g.micro` PostgreSQL RDS instance in private subnets, and the IAM and security groups around them. No NAT gateway.
 
-**Rough cost if left running:** about $25-30 per month (about $1 per day), mostly RDS, EC2 and the public IPv4 address. These are estimates, so check them with Infracost. Destroy it after the demo.
+## Pipelines (GitHub Actions)
+- **deploy-infra:** on pull requests, plans and comments the cost change. On merge to main, applies automatically if the monthly increase is within COST_THRESHOLD, otherwise sends Slack and email and waits for approval.
+- **check-drift:** daily at 06:00 UTC and on demand. If real infrastructure differs from the state, it plans the restore, notifies, waits for approval, then applies.
 
-## Setup
+*Approval works through a GitHub issue: an approver listed in APPROVERS replies approve or deny. This works on free private repositories.*
 
-1. Install Terraform 1.10 or newer, the AWS CLI, and the Session Manager plugin. Log in to your AWS account (`aws configure sso` or access keys).
-2. One-time bootstrap (state bucket + GitHub OIDC role):
-   ```
-   cd bootstrap
-   terraform init
-   terraform apply -var="github_repo=OWNER/REPO"
-   ```
-3. Put the `state_bucket` output into `infra/versions.tf` (replace `REPLACE-WITH-STATE-BUCKET`).
-4. Build the stack (the database takes 5-10 minutes):
-   ```
-   cd ../infra
-   terraform init
-   terraform plan
-   terraform apply
-   ```
-5. Connect to the server: run the `ssm_connect_command` output.
-6. Tear down when finished: `terraform destroy` in `infra`, then in `bootstrap`.
+**Repository secrets** (Settings, Secrets and variables, Actions): AWS_ROLE, INFRACOST_API_KEY, SLACK_WEBHOOK_URL, SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, EMAIL_TO.
 
-## Demo hooks
+**Repository variables:** COST_THRESHOLD (maximum allowed monthly increase in USD, for example 10) and APPROVERS (comma-separated GitHub usernames).
+
+*Commit infra/.terraform.lock.hcl so every run uses the same provider versions.*
+
+## Demo
 
 - **Front door:** in a pull request, change `instance_type` (for example `t3.xlarge`) and `db_instance_class` (for example `db.m5.large`). Infracost shows the monthly increase.
 - **Back door:** in the AWS console, add an inbound SSH rule open to the world on the `governed-demo-app-sg` security group, or edit a tag on the EC2 instance. The next `terraform plan` shows the drift, and `apply` restores it.
