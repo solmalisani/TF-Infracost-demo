@@ -1,126 +1,177 @@
-name: check-drift
 
-# Runs daily (and on demand): compare the real AWS resources with the Terraform state.
-# If something changed outside Terraform, plan what would be restored, notify, wait for approval, then apply.
+name: Check Terraform drift
+
 on:
   schedule:
     - cron: "0 6 * * *"
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
-  issues: write
-
-concurrency:
-  group: terraform-infra
-  cancel-in-progress: false
 
 jobs:
   detect:
+    name: Detect drift and create remediation plan
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+
     outputs:
       drift: ${{ steps.refresh.outputs.drift }}
-    env:
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-    steps:
-      - name: Git clone the repository
-        uses: actions/checkout@v7
 
-      - name: Setup Terraform and AWS credentials
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Initialize Terraform
         uses: ./.github/actions/tf-init
         with:
           aws-role: ${{ secrets.AWS_ROLE }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-north-1' }}
+          terraform-version: "1.16.6"
 
       - name: Check for drift
         id: refresh
+        shell: bash
         run: |
+          set -uo pipefail
+
           set +e
-          terraform plan -refresh-only -detailed-exitcode -input=false -lock=false -no-color > /tmp/refresh.txt
+          terraform plan \
+            -refresh-only \
+            -detailed-exitcode \
+            -input=false \
+            -no-color \
+            -lock-timeout=5m \
+            -out=refresh-plan.tfplan
           code=$?
           set -e
-          # exit codes: 0 = no drift, 1 = error, 2 = drift found
-          if [ "$code" -eq 1 ]; then cat /tmp/refresh.txt; exit 1; fi
-          if [ "$code" -eq 2 ]; then echo "drift=true" >> "$GITHUB_OUTPUT"; else echo "drift=false" >> "$GITHUB_OUTPUT"; fi
 
-      - name: Plan what would be restored
+          case "$code" in
+            0)
+              echo "drift=false" >> "$GITHUB_OUTPUT"
+              echo "No drift detected." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            2)
+              echo "drift=true" >> "$GITHUB_OUTPUT"
+              echo "Drift detected. A remediation plan will be generated." \
+                >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error::Terraform refresh-only plan failed (exit code $code)."
+              exit "$code"
+              ;;
+          esac
+
+      - name: Create remediation plan
         if: steps.refresh.outputs.drift == 'true'
         run: |
-          terraform plan -input=false -lock=false -no-color -out=tfplan | tee /tmp/plan.txt
-          {
-            echo "## Drift detected"
-            echo '```'
-            head -c 20000 /tmp/plan.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          {
-            echo "Drift detected in the Terraform-managed infrastructure."
-            echo "Review the plan and approve it to restore the approved state: $RUN_URL"
-            echo
-            head -c 4000 /tmp/plan.txt
-          } > /tmp/email.txt
+          terraform plan \
+            -input=false \
+            -no-color \
+            -lock-timeout=5m \
+            -out=tfplan
 
-      - name: Keep the plan for the apply job
+      - name: Add plan summary
+        if: steps.refresh.outputs.drift == 'true'
+        run: |
+          {
+            echo "## Drift remediation plan"
+            echo ""
+            echo "Review the saved plan before approving remediation."
+            echo ""
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload remediation plan
         if: steps.refresh.outputs.drift == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan
-          path: infra/tfplan
+          name: drift-plan-${{ github.run_id }}
+          path: tfplan
+          if-no-files-found: error
           retention-days: 1
 
-      - name: Slack
-        if: steps.refresh.outputs.drift == 'true'
+  notify:
+    name: Notify drift detected
+    needs: detect
+    if: needs.detect.outputs.drift == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Notify Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          msg="Drift detected in the AWS infrastructure. The plan to restore it is waiting for approval: $RUN_URL"
-          curl -sS -X POST -H 'Content-type: application/json' \
-            --data "$(jq -n --arg text "$msg" '{text: $text}')" "$SLACK_WEBHOOK_URL"
+          set -euo pipefail
+          test -n "$SLACK_WEBHOOK_URL"
 
-      - name: Email
-        if: steps.refresh.outputs.drift == 'true'
-        uses: dawidd6/action-send-mail@v22
+          message="Terraform drift detected. Review the remediation plan and approve the production deployment if appropriate: $RUN_URL"
+
+          curl --fail --silent --show-error \
+            -X POST \
+            -H 'Content-type: application/json' \
+            --data "$(jq -n --arg text "$message" '{text: $text}')" \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: Notify by email
+        uses: dawidd6/action-send-mail@v4
         with:
           server_address: ${{ secrets.SMTP_SERVER }}
           server_port: ${{ secrets.SMTP_PORT }}
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "Drift detected: approval needed to restore infrastructure"
+          subject: "Terraform drift detected: review required"
           to: ${{ secrets.EMAIL_TO }}
           from: Terraform pipeline <${{ secrets.SMTP_USERNAME }}>
-          body: file:///tmp/email.txt
+          body: |
+            Terraform drift has been detected.
 
-  approve:
-    needs: detect
-    if: needs.detect.outputs.drift == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: trstringer/manual-approval@v1
-        timeout-minutes: 60 # the job keeps running while it waits, which uses your free Actions minutes
-        with:
-          secret: ${{ github.token }}
-          approvers: ${{ vars.APPROVERS }}
-          minimum-approvals: 1
-          issue-title: "Approve restoring drifted infrastructure"
-          issue-body: "Drift was detected. The plan is in the run summary: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Reply **approve** to apply it or **deny** to leave the infrastructure as it is."
+            Repository: ${{ github.repository }}
+            Branch: main
 
-  apply:
-    needs: approve
-    if: needs.approve.result == 'success'
+            Review the remediation plan and the deployment approval:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  remediate:
+    name: Apply approved remediation
+    needs: [detect, notify]
+    if: >-
+      needs.detect.outputs.drift == 'true' &&
+      needs.notify.result == 'success'
     runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: terraform-state-apply
+      cancel-in-progress: false
+
     steps:
-      - name: Git clone the repository
+      - name: Checkout planned commit
         uses: actions/checkout@v7
+        with:
+          ref: main
 
-      - name: Setup Terraform and AWS credentials
+      - name: Initialize Terraform
         uses: ./.github/actions/tf-init
         with:
           aws-role: ${{ secrets.AWS_ROLE }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-north-1' }}
+          terraform-version: "1.16.6"
 
-      - uses: actions/download-artifact@v8
+      - name: Download remediation plan
+        uses: actions/download-artifact@v4
         with:
-          name: tfplan
-          path: infra
+          name: drift-plan-${{ github.run_id }}
+          path: .
 
-      - name: Restore the approved state
-        run: terraform apply -input=false tfplan
+      - name: Apply approved remediation
+        run: terraform apply -input=false -no-color tfplan

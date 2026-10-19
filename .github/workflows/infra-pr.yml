@@ -1,0 +1,39 @@
+
+name: Terraform PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - '.terraform.lock.hcl'
+      - '**/*.tfbackend'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    container: ghcr.io/infracost/ci:2
+
+    steps:
+      - name: Checkout PR base
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+
+      - name: Publish Infracost diff
+        run: infracost-ci diff --base-path base --head-path head
+        env:
+          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
