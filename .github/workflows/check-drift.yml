@@ -30,7 +30,7 @@ jobs:
         uses: ./.github/actions/tf-init
         with:
           aws-role: ${{ secrets.AWS_ROLE }}
-          aws-region: ${{ vars.AWS_REGION || 'eu-north-1' }}
+          aws-region: ${{ secrets.AWS_REGION || 'eu-north-1' }}
           terraform-version: "1.16.6"
 
       - name: Check for drift
@@ -164,7 +164,7 @@ jobs:
         uses: ./.github/actions/tf-init
         with:
           aws-role: ${{ secrets.AWS_ROLE }}
-          aws-region: ${{ vars.AWS_REGION || 'eu-north-1' }}
+          aws-region: ${{ secrets.AWS_REGION || 'eu-north-1' }}
           terraform-version: "1.16.6"
 
       - name: Download remediation plan

@@ -18,7 +18,7 @@ resource "aws_security_group" "app" {
   tags = { Name = "${var.project}-app-sg" }
 }
 
-# Database: only the app server can reach it.
+# Database: only the app server can reach it
 resource "aws_security_group" "db" {
   name        = "${var.project}-db-sg"
   description = "PostgreSQL from the app server only"
