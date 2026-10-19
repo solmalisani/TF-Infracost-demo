@@ -48,6 +48,7 @@ resource "aws_instance" "app" {
     volume_type = "gp3"
     volume_size = 8
     encrypted   = true
+    tags        = {}
   }
 
   tags = { Name = "${var.project}-app" }

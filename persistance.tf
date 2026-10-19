@@ -31,6 +31,9 @@ resource "aws_db_instance" "main" {
   apply_immediately       = true
 
   lifecycle {
-    ignore_changes = [engine_version] # minor versions upgrade automatically; avoid false drift
+    ignore_changes = [
+      engine_version,
+      latest_restorable_time,
+      ]
   }
 }
