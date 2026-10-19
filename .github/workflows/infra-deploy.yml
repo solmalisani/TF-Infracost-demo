@@ -21,7 +21,7 @@ concurrency:
 
 env:
   TF_VERSION: "1.16.6"
-  INFRACOST_VERSION: "v2.4.2"
+  INFRACOST_VERSION: "v2.17.0"
   COST_THRESHOLD: "50"
 
 jobs:
@@ -56,10 +56,13 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: Install Infracost CLI
+      - name: Estimate planned infrastructure cost
+        env:
+          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
         run: |
-          curl -fsSL https://raw.githubusercontent.com/infracost/cli/main/scripts/install.sh \
-            | INFRACOST_VERSION=${INFRACOST_VERSION} sh
+          set -euo pipefail
+          infracost version
+          infracost scan tfplan.json --json > infracost.json
 
       - name: Terraform init
         working-directory: head

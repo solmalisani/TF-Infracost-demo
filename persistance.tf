@@ -33,7 +33,6 @@ resource "aws_db_instance" "main" {
   lifecycle {
     ignore_changes = [
       engine_version,
-      latest_restorable_time,
-      ]
+    ]
   }
 }
