@@ -23,5 +23,4 @@ runs:
 
     - name: Terraform init
       shell: bash
-      working-directory: infra
       run: terraform init -input=false
