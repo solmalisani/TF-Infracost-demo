@@ -3,6 +3,7 @@ name: Terraform PR Checks
 
 on:
   pull_request:
+    types: [opened]
     branches: [main]
     paths:
       - '**/*.tf'
@@ -20,20 +21,17 @@ jobs:
     container: ghcr.io/infracost/ci:2
 
     steps:
-      - name: Checkout PR base
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          path: base
-
-      - name: Checkout PR head
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
           path: head
 
-      - name: Publish Infracost diff
-        run: infracost-ci diff --base-path base --head-path head
-        env:
-          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: base
+
+      - uses: infracost/actions/diff@v5
+        with:
+          api-key: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
+          base-path: base
+          head-path: head
