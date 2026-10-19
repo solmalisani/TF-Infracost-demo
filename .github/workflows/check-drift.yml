@@ -34,7 +34,6 @@ jobs:
 
       - name: Check for drift
         id: refresh
-        working-directory: infra
         run: |
           set +e
           terraform plan -refresh-only -detailed-exitcode -input=false -lock=false -no-color > /tmp/refresh.txt
@@ -46,7 +45,6 @@ jobs:
 
       - name: Plan what would be restored
         if: steps.refresh.outputs.drift == 'true'
-        working-directory: infra
         run: |
           terraform plan -input=false -lock=false -no-color -out=tfplan | tee /tmp/plan.txt
           {
@@ -125,5 +123,4 @@ jobs:
           path: infra
 
       - name: Restore the approved state
-        working-directory: infra
         run: terraform apply -input=false tfplan

@@ -38,13 +38,11 @@ jobs:
           aws-role: ${{ secrets.AWS_ROLE }}
 
       - name: Format and validate
-        working-directory: infra
         run: |
           terraform fmt -check -recursive
           terraform validate
 
       - name: Plan
-        working-directory: infra
         run: terraform plan -input=false -lock=${{ github.event_name == 'push' }} -out=tfplan
 
       - uses: infracost/actions/setup@v3
@@ -185,5 +183,4 @@ jobs:
           path: infra
 
       - name: Apply the approved plan
-        working-directory: infra
         run: terraform apply -input=false tfplan
