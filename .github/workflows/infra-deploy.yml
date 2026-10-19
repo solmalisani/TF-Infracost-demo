@@ -56,14 +56,6 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: Estimate planned infrastructure cost
-        env:
-          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
-        run: |
-          set -euo pipefail
-          infracost version
-          infracost scan tfplan.json --json > infracost.json
-
       - name: Terraform init
         working-directory: head
         run: terraform init -input=false
@@ -72,22 +64,28 @@ jobs:
         working-directory: head
         run: terraform plan -input=false -out=tfplan
 
-      - name: Export plan as JSON
-        working-directory: head
-        run: terraform show -json tfplan > tfplan.json
-
       - uses: infracost/actions/diff@v5
         with:
           api-key: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
           base-path: base
           head-path: head
 
-      - name: Upload Terraform plan
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan
-          path: head/tfplan
-          retention-days: 1
+      # - name: Export plan as JSON
+      #   working-directory: head
+      #   run: terraform show -json tfplan > tfplan.json
+
+      # - uses: infracost/actions/diff@v5
+      #   with:
+      #     api-key: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
+      #     base-path: base
+      #     head-path: head
+
+      # - name: Upload Terraform plan
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: terraform-plan
+      #     path: head/tfplan
+      #     retention-days: 1
 
   # apply-automatically:
   #   needs: plan-and-estimate
