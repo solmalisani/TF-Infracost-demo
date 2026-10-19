@@ -29,7 +29,8 @@ jobs:
     env:
       BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Git clone the repository
+        uses: actions/checkout@v7
 
       - name: Checkout the previous version (cost baseline)
         uses: actions/checkout@v7
@@ -37,9 +38,22 @@ jobs:
           ref: ${{ env.BASE_SHA }}
           path: base
 
-      - uses: ./.github/actions/tf-init
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
         with:
-          aws-role: ${{ secrets.AWS_ROLE }}
+          terraform_version: "^1.10.0"
+          terraform_wrapper: false # keeps exit codes and output clean
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Terraform init
+        shell: bash
+        working-directory: infra
+        run: terraform init -input=false
 
       - name: Format and validate
         working-directory: infra
@@ -175,11 +189,25 @@ jobs:
     if: ${{ always() && github.event_name == 'push' && needs.plan.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.approve.result) }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - name: Git clone the repository
+        uses: actions/checkout@v7
 
-      - uses: ./.github/actions/tf-init
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
         with:
-          aws-role: ${{ secrets.AWS_ROLE }}
+          terraform_version: "^1.10.0"
+          terraform_wrapper: false # keeps exit codes and output clean
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Terraform init
+        shell: bash
+        working-directory: infra
+        run: terraform init -input=false
 
       - uses: actions/download-artifact@v4
         with:
