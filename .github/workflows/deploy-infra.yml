@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       delta: ${{ steps.gate.outputs.delta }}
       limit: ${{ steps.gate.outputs.limit }}
@@ -28,17 +28,17 @@ jobs:
     env:
       BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Checkout the previous version (cost baseline)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.BASE_SHA }}
           path: base
 
       - uses: ./.github/actions/tf-init
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-role: ${{ secrets.AWS_ROLE }}
 
       - name: Format and validate
         working-directory: infra
@@ -127,7 +127,7 @@ jobs:
   notify:
     needs: plan
     if: github.event_name == 'push' && needs.plan.outputs.over_limit == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       MESSAGE: |
         Terraform change needs approval: +$${{ needs.plan.outputs.delta }}/month (limit $${{ needs.plan.outputs.limit }}).
@@ -158,7 +158,7 @@ jobs:
   approve:
     needs: plan
     if: github.event_name == 'push' && needs.plan.outputs.over_limit == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: trstringer/manual-approval@v1
         timeout-minutes: 60 # the job keeps running while it waits, which uses your free Actions minutes
@@ -172,13 +172,13 @@ jobs:
   apply:
     needs: [plan, approve]
     if: ${{ always() && github.event_name == 'push' && needs.plan.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.approve.result) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/tf-init
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-role: ${{ secrets.AWS_ROLE }}
 
       - uses: actions/download-artifact@v4
         with:

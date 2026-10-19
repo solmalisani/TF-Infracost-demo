@@ -11,12 +11,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: hashicorp/setup-terraform@v3
+    - uses: hashicorp/setup-terraform@v4
       with:
         terraform_version: "^1.10.0"
         terraform_wrapper: false # keeps exit codes and output clean
 
-    - uses: aws-actions/configure-aws-credentials@v4
+    - uses: aws-actions/configure-aws-credentials@v6.3.0
       with:
         role-to-assume: ${{ inputs.aws-role }}
         aws-region: ${{ inputs.aws-region }}
