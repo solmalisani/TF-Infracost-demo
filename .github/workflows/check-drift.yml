@@ -1,6 +1,6 @@
 name: check-drift
 
-# Daily (and on demand): compare the real AWS resources with the Terraform state.
+# Runs daily (and on demand): compare the real AWS resources with the Terraform state.
 # If something changed outside Terraform, plan what would be restored, notify, wait for approval, then apply.
 on:
   schedule:
@@ -27,23 +27,10 @@ jobs:
       - name: Git clone the repository
         uses: actions/checkout@v7
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
+      - name: Setup Terraform and AWS credentials
+        uses: ./.github/actions/tf-init
         with:
-          terraform_version: "^1.10.0"
-          terraform_wrapper: false # keeps exit codes and output clean
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6.3.0
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE }}
-          aws-region: ${{ secrets.AWS_REGION }}
-          mask-aws-account-id: true
-
-      - name: Terraform init
-        shell: bash
-        working-directory: infra
-        run: terraform init -input=false
+          aws-role: ${{ secrets.AWS_ROLE }}
 
       - name: Check for drift
         id: refresh
@@ -94,7 +81,7 @@ jobs:
 
       - name: Email
         if: steps.refresh.outputs.drift == 'true'
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v22
         with:
           server_address: ${{ secrets.SMTP_SERVER }}
           server_port: ${{ secrets.SMTP_PORT }}
@@ -127,25 +114,12 @@ jobs:
       - name: Git clone the repository
         uses: actions/checkout@v7
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
+      - name: Setup Terraform and AWS credentials
+        uses: ./.github/actions/tf-init
         with:
-          terraform_version: "^1.10.0"
-          terraform_wrapper: false # keeps exit codes and output clean
+          aws-role: ${{ secrets.AWS_ROLE }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6.3.0
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE }}
-          aws-region: ${{ secrets.AWS_REGION }}
-          mask-aws-account-id: true
-
-      - name: Terraform init
-        shell: bash
-        working-directory: infra
-        run: terraform init -input=false
-
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: tfplan
           path: infra

@@ -1,0 +1,27 @@
+name: Terraform init with AWS credentials
+description: Installs Terraform, authenticates to AWS with OIDC and runs terraform init
+
+inputs:
+  aws-role:
+    required: true
+  aws-region:
+    required: false
+    default: eu-north-1
+
+runs:
+  using: composite
+  steps:
+    - uses: hashicorp/setup-terraform@v4
+      with:
+        terraform_version: "^1.10.0"
+        terraform_wrapper: false # keeps exit codes and output clean
+
+    - uses: aws-actions/configure-aws-credentials@v6.3.0
+      with:
+        role-to-assume: ${{ inputs.aws-role }}
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: Terraform init
+      shell: bash
+      working-directory: infra
+      run: terraform init -input=false
