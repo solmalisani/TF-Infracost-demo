@@ -76,52 +76,11 @@ jobs:
         working-directory: head
         run: terraform show -json tfplan > tfplan.json
 
-      - name: Estimate previous infrastructure cost
-        env:
-          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
-        run: |
-          set -euo pipefail
-          infracost scan base --json > base-cost.json
-          infracost inspect --file base-cost.json --summary --json \
-            > base-summary.json
-
-      - name: Estimate planned infrastructure cost
-        env:
-          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
-        working-directory: head
-        run: |
-          set -euo pipefail
-          infracost scan tfplan.json --json > planned-cost.json
-          infracost inspect --file planned-cost.json --summary --json \
-            > planned-summary.json
-
-      - name: Evaluate monthly cost increase
-        id: cost
-        working-directory: head
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          BASE_COST=$(jq -er '.monthly_cost | numbers' ../base-summary.json)
-          NEW_COST=$(jq -er '.monthly_cost | numbers' planned-summary.json)
-
-          DELTA=$(awk -v old="$BASE_COST" -v new="$NEW_COST" \
-            'BEGIN { printf "%.2f", new - old }')
-
-          echo "Previous monthly cost: \$${BASE_COST}"
-          echo "Planned monthly cost:  \$${NEW_COST}"
-          echo "Monthly cost change:   \$${DELTA}"
-
-          echo "cost_increase=${DELTA}" >> "$GITHUB_OUTPUT"
-
-          if awk -v delta="$DELTA" -v limit="$COST_THRESHOLD" \
-            'BEGIN { exit !(delta > limit) }'; then
-            echo "requires_approval=true" >> "$GITHUB_OUTPUT"
-            echo "Cost increase exceeds \$${COST_THRESHOLD}/month."
-          else
-            echo "requires_approval=false" >> "$GITHUB_OUTPUT"
-            echo "Cost increase is within the threshold."
-          fi
+      - uses: infracost/actions/diff@v5
+        with:
+          api-key: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
+          base-path: base
+          head-path: head
 
       - name: Upload Terraform plan
         uses: actions/upload-artifact@v4
@@ -130,80 +89,80 @@ jobs:
           path: head/tfplan
           retention-days: 1
 
-  apply-automatically:
-    needs: plan-and-estimate
-    if: needs.plan-and-estimate.outputs.requires_approval == 'false'
-    runs-on: ubuntu-latest
-    environment: production-auto
+  # apply-automatically:
+  #   needs: plan-and-estimate
+  #   if: needs.plan-and-estimate.outputs.requires_approval == 'false'
+  #   runs-on: ubuntu-latest
+  #   environment: production-auto
 
-    steps:
-      - name: Checkout merged version
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.sha }}
-          path: head
+  #   steps:
+  #     - name: Checkout merged version
+  #       uses: actions/checkout@v7
+  #       with:
+  #         ref: ${{ github.sha }}
+  #         path: head
 
-      - name: Download Terraform plan
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-plan
-          path: head
+  #     - name: Download Terraform plan
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: terraform-plan
+  #         path: head
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6.3.0
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE }}
-          aws-region: ${{ secrets.AWS_REGION }}
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v6.3.0
+  #       with:
+  #         role-to-assume: ${{ secrets.AWS_ROLE }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
+  #     - name: Setup Terraform
+  #       uses: hashicorp/setup-terraform@v3
+  #       with:
+  #         terraform_version: ${{ env.TF_VERSION }}
+  #         terraform_wrapper: false
 
-      - name: Terraform init
-        working-directory: head
-        run: terraform init -input=false
+  #     - name: Terraform init
+  #       working-directory: head
+  #       run: terraform init -input=false
 
-      - name: Apply saved plan
-        working-directory: head
-        run: terraform apply -input=false tfplan
+  #     - name: Apply saved plan
+  #       working-directory: head
+  #       run: terraform apply -input=false tfplan
 
-  apply-after-approval:
-    needs: plan-and-estimate
-    if: needs.plan-and-estimate.outputs.requires_approval == 'true'
-    runs-on: ubuntu-latest
-    environment: production-approval
+  # apply-after-approval:
+  #   needs: plan-and-estimate
+  #   if: needs.plan-and-estimate.outputs.requires_approval == 'true'
+  #   runs-on: ubuntu-latest
+  #   environment: production-approval
 
-    steps:
-      - name: Checkout merged version
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.sha }}
-          path: head
+  #   steps:
+  #     - name: Checkout merged version
+  #       uses: actions/checkout@v7
+  #       with:
+  #         ref: ${{ github.sha }}
+  #         path: head
 
-      - name: Download Terraform plan
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-plan
-          path: head
+  #     - name: Download Terraform plan
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: terraform-plan
+  #         path: head
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6.3.0
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE }}
-          aws-region: ${{ secrets.AWS_REGION }}
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v6.3.0
+  #       with:
+  #         role-to-assume: ${{ secrets.AWS_ROLE }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
+  #     - name: Setup Terraform
+  #       uses: hashicorp/setup-terraform@v3
+  #       with:
+  #         terraform_version: ${{ env.TF_VERSION }}
+  #         terraform_wrapper: false
 
-      - name: Terraform init
-        working-directory: head
-        run: terraform init -input=false
+  #     - name: Terraform init
+  #       working-directory: head
+  #       run: terraform init -input=false
 
-      - name: Apply saved plan
-        working-directory: head
-        run: terraform apply -input=false tfplan
+  #     - name: Apply saved plan
+  #       working-directory: head
+  #       run: terraform apply -input=false tfplan

@@ -14,6 +14,7 @@ variable "environment" {
   default = "demo"
 }
 
+
 # Networking layer
 variable "vpc_cidr" {
   type    = string
