@@ -167,16 +167,9 @@ jobs:
                       type: mrkdwn
                       text: "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|See more: drift report and logs>"
 
-      - name: Attach drift plan in Slack channel
-        if: needs.detect.outputs.drift == 'true'
+      - name: Send a saved artifact to a Slack workflow
         uses: slackapi/slack-github-action@v4.0.0
         with:
-          method: files.uploadV2
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          errors: true
-          payload: |
-            channel: "${{ secrets.SLACK_CHANNEL_ID }}"
-            initial_comment: "Terraform drift report — ${{ needs.detect.outputs.report_timestamp }}"
-            file: "drift-report/${{ needs.detect.outputs.report_timestamp }}-drift-plan.txt"
-            filename: "${{ needs.detect.outputs.report_timestamp }}-drift-plan.txt"
-
+          payload-file-path: "drift-report/${{ needs.detect.outputs.report_timestamp }}-drift-plan.txt"
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: webhook-trigger
