@@ -111,15 +111,109 @@ jobs:
           if-no-files-found: warn
 
   notify:
-    name: Notify Slack
+    name: Create issue and notify Slack
     runs-on: ubuntu-24.04
     needs: detect
     if: always() && (needs.detect.outputs.drift == 'true' || needs.detect.outputs.drift_error == 'true' || needs.detect.outputs.remediation_error == 'true' || needs.detect.result == 'failure')
 
+    permissions:
+      contents: read
+      issues: write
+
+    outputs:
+      issue_url: ${{ steps.create_issue.outputs.issue_url }}
+
     steps:
       - name: Format timestamp
         id: timestamp
-        run: echo "formatted=$(TZ=Europe/Amsterdam date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "formatted=$(TZ=Europe/Amsterdam date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
+
+      - name: Download drift report
+        if: needs.detect.outputs.drift == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.detect.outputs.report_timestamp }}-terraform-drift-report
+          path: drift-report
+
+      - name: Create GitHub issue for drift
+        id: create_issue
+        if: needs.detect.outputs.drift == 'true'
+        continue-on-error: true
+        uses: actions/github-script@v9
+        env:
+          REPORT_TIMESTAMP: ${{ needs.detect.outputs.report_timestamp }}
+          REPORT_FILE: drift-report/${{ needs.detect.outputs.report_timestamp }}-drift-plan.txt
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DETECTED_AT: ${{ steps.timestamp.outputs.formatted }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            const reportPath = process.env.REPORT_FILE;
+            if (!fs.existsSync(reportPath)) {
+              throw new Error(`Terraform drift report not found: ${reportPath}`);
+            }
+
+            const fullPlan = fs.readFileSync(reportPath, 'utf8');
+            const maxChars = 40000;
+            const plan = fullPlan.length > maxChars
+              ? fullPlan.slice(0, maxChars) + '\n\n[Report truncated. See the workflow run for the full output.]'
+              : fullPlan;
+
+            const body = [
+              '## Terraform drift detected',
+              '',
+              'Terraform detected infrastructure changes that differ from the configured desired state.',
+              '',
+              `- **Repository:** ${context.repo.owner}/${context.repo.repo}`,
+              `- **Detected at:** ${process.env.DETECTED_AT} (Europe/Amsterdam)`,
+              `- **Workflow run:** ${process.env.WORKFLOW_URL}`,
+              '',
+              '## Next steps',
+              '',
+              '**If the change is intentional:**',
+              '1. Update the corresponding Terraform (`.tf`) files to reflect the intended infrastructure state.',
+              '2. Publish a pull request (PR) with those changes.',
+              '3. Review and merge the PR according to your normal process.',
+              '',
+              '**If the change is not intentional:**',
+              '1. Run the Terraform remediation workflow from the Actions tab to apply changes.',
+              '',
+              '## Terraform plan',
+              '',
+              '<details>',
+              '<summary>Expand to view the detected changes</summary>',
+              '',
+              '```text',
+              plan,
+              '```',
+              '',
+              '</details>',
+              '',
+              '> The plan may contain sensitive infrastructure details. Handle this issue according to the repository access policy.'
+            ].join('\n');
+
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Terraform drift detected — ${process.env.REPORT_TIMESTAMP}`,
+              body,
+              labels: ['terraform-drift']
+            }).catch(async (error) => {
+              if (error.status === 422 && String(error.message).includes('label')) {
+                return await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: `Terraform drift detected — ${process.env.REPORT_TIMESTAMP}`,
+                  body
+                });
+              }
+              throw error;
+            });
+
+            core.setOutput('issue_url', issue.data.html_url);
+            core.info(`Created drift issue: ${issue.data.html_url}`);
 
       - name: Send drift notification to Slack
         uses: slackapi/slack-github-action@v4.0.0
@@ -127,7 +221,7 @@ jobs:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
-            text: "${{ needs.detect.outputs.drift == 'true' && 'Terraform drift detected. Review the report.' || 'Terraform drift check failed. Review the workflow logs.' }}"
+            text: "${{ needs.detect.outputs.drift == 'true' && steps.create_issue.outputs.issue_url != '' && format('Terraform drift detected. More information: <{0}|GitHub issue>', steps.create_issue.outputs.issue_url) || needs.detect.outputs.drift == 'true' && 'Terraform drift detected, but the GitHub issue could not be created. Review the workflow run.' || 'Terraform drift check failed. Review the workflow logs.' }}"
             attachments:
               - color: "${{ needs.detect.outputs.drift == 'true' && needs.detect.outputs.remediation_error != 'true' && 'warning' || 'danger' }}"
                 blocks:
@@ -148,8 +242,8 @@ jobs:
                   - type: section
                     text:
                       type: mrkdwn
-                      text: "${{ needs.detect.outputs.drift == 'true' && 'Changes may have been made to AWS outside Terraform. Review the reports and proposed remediation before making any changes.' || 'The drift check could not complete successfully. Review the workflow logs to identify the problem.' }}"
+                      text: "${{ needs.detect.outputs.drift == 'true' && 'Changes may have been made to AWS outside Terraform. Review the proposed remediation before making any changes.' || 'The drift check could not complete successfully. Review the workflow logs to identify the problem.' }}"
                   - type: section
                     text:
                       type: mrkdwn
-                      text: "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|See more: drift report and logs>"
+                      text: "${{ needs.detect.outputs.drift == 'true' && steps.create_issue.outputs.issue_url != '' && format('More information and the Terraform plan: <{0}|View GitHub issue>', steps.create_issue.outputs.issue_url) || needs.detect.outputs.drift == 'true' && 'The GitHub issue could not be created. Check the workflow run for details.' || format('<{0}|See workflow run and logs>', format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}"
