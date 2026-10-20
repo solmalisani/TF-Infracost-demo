@@ -26,7 +26,7 @@ env:
 
 jobs:
   plan-and-estimate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       requires_approval: ${{ steps.cost.outputs.requires_approval }}
       cost_increase: ${{ steps.cost.outputs.cost_increase }}
@@ -90,7 +90,7 @@ jobs:
   # apply-automatically:
   #   needs: plan-and-estimate
   #   if: needs.plan-and-estimate.outputs.requires_approval == 'false'
-  #   runs-on: ubuntu-latest
+  #   runs-on: ubuntu-26.04
   #   environment: production-auto
 
   #   steps:
@@ -129,7 +129,7 @@ jobs:
   # apply-after-approval:
   #   needs: plan-and-estimate
   #   if: needs.plan-and-estimate.outputs.requires_approval == 'true'
-  #   runs-on: ubuntu-latest
+  #   runs-on: ubuntu-26.04
   #   environment: production-approval
 
   #   steps:

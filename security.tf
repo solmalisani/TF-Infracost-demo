@@ -34,3 +34,25 @@ resource "aws_security_group" "db" {
 
   tags = { Name = "${var.project}-db-sg" }
 }
+
+
+
+#### ONLY FOR TESTING PR
+resource "aws_security_group" "test" {
+  name        = "${var.project}-test-sg"
+  description = "TEST DELETE"
+  vpc_id      = aws_vpc.main.id
+
+  # Explicit empty list: any rule added by hand in the console is reported as drift.
+  ingress = []
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.project}-test-sg" }
+}
