@@ -221,7 +221,7 @@ jobs:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
-            text: "${{ needs.detect.outputs.drift == 'true' && steps.create_issue.outputs.issue_url != '' && format('Terraform drift detected. Review the <{0}|report>', steps.create_issue.outputs.issue_url) || needs.detect.outputs.drift == 'true' && 'Terraform drift detected, but the GitHub issue could not be created. Review the workflow run.' || 'Terraform drift check failed. Review the workflow logs.' }}"
+            text: "${{ needs.detect.outputs.drift == 'true' && 'Terraform drift detected. Review the report.' || 'Terraform drift check failed. Review the workflow logs.' }}"
             attachments:
               - color: "${{ needs.detect.outputs.drift == 'true' && needs.detect.outputs.remediation_error != 'true' && 'warning' || 'danger' }}"
                 blocks:
