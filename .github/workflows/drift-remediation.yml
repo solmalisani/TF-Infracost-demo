@@ -93,7 +93,7 @@ jobs:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
-            text: "⏳ Terraform remediation is pending approval. ${{ vars.REMEDIATION_APPROVER_SLACK_IDS }} Please review the plan and approve or reject the deployment."
+            text: "⏳ Terraform remediation is pending approval. Please review the plan and approve or reject the deployment."
             blocks:
               - type: section
                 text:
@@ -101,14 +101,12 @@ jobs:
                   text: |
                     ⏳ *Terraform remediation pending approval*
 
-                    ${{ vars.REMEDIATION_APPROVER_SLACK_IDS }}
-
                     A Terraform remediation plan has been generated. The apply job is waiting for approval.
 
                     *Repository:* `${{ github.repository }}`
                     *Triggered by:* `${{ github.actor }}`
 
-                    Please review the plan before approving the deployment.
+                    ${{ vars.REMEDIATION_APPROVER_SLACK_IDS }} please review the plan before approving the deployment.
               - type: actions
                 elements:
                   - type: button
