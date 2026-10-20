@@ -140,6 +140,7 @@ jobs:
           errors: true
           payload: |
             channel: "${{ secrets.SLACK_CHANNEL_ID }}"
+            text: "${{ needs.detect.outputs.drift == 'true' && 'Terraform drift detected. Review the report.' || 'Terraform drift check failed. Review the workflow logs.' }}"
             attachments:
               - color: "${{ needs.detect.outputs.drift == 'true' && needs.detect.outputs.remediation_error != 'true' && 'warning' || 'danger' }}"
                 blocks:
@@ -174,7 +175,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           errors: true
           payload: |
-            channel_id: "${{ secrets.SLACK_CHANNEL_ID }}"
+            channel: "${{ secrets.SLACK_CHANNEL_ID }}"
             thread_ts: "${{ steps.slack_notification.outputs.ts }}"
             file: "drift-report/${{ needs.detect.outputs.report_timestamp }}-drift-plan.txt"
             filename: "${{ needs.detect.outputs.report_timestamp }}-drift-plan.txt"
