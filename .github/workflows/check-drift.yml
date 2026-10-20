@@ -1,177 +1,177 @@
 
-name: Check Terraform drift
+# name: Check Terraform drift
 
-on:
-  schedule:
-    - cron: "0 6 * * *"
-  workflow_dispatch:
+# on:
+#   schedule:
+#     - cron: "0 6 * * *"
+#   workflow_dispatch:
 
-permissions:
-  contents: read
+# permissions:
+#   contents: read
 
-jobs:
-  detect:
-    name: Detect drift and create remediation plan
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      id-token: write
+# jobs:
+#   detect:
+#     name: Detect drift and create remediation plan
+#     runs-on: ubuntu-24.04
+#     permissions:
+#       contents: read
+#       id-token: write
 
-    outputs:
-      drift: ${{ steps.refresh.outputs.drift }}
+#     outputs:
+#       drift: ${{ steps.refresh.outputs.drift }}
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          ref: main
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v7
+#         with:
+#           ref: main
 
-      - name: Initialize Terraform
-        uses: ./.github/actions/tf-init
-        with:
-          aws-role: ${{ secrets.AWS_ROLE }}
-          aws-region: ${{ secrets.AWS_REGION || 'eu-north-1' }}
-          terraform-version: "1.16.6"
+#       - name: Initialize Terraform
+#         uses: ./.github/actions/tf-init
+#         with:
+#           aws-role: ${{ secrets.AWS_ROLE }}
+#           aws-region: ${{ secrets.AWS_REGION || 'eu-north-1' }}
+#           terraform-version: "1.16.6"
 
-      - name: Check for drift
-        id: refresh
-        shell: bash
-        run: |
-          set -uo pipefail
+#       - name: Check for drift
+#         id: refresh
+#         shell: bash
+#         run: |
+#           set -uo pipefail
 
-          set +e
-          terraform plan \
-            -refresh-only \
-            -detailed-exitcode \
-            -input=false \
-            -no-color \
-            -lock-timeout=5m \
-            -out=refresh-plan.tfplan
-          code=$?
-          set -e
+#           set +e
+#           terraform plan \
+#             -refresh-only \
+#             -detailed-exitcode \
+#             -input=false \
+#             -no-color \
+#             -lock-timeout=5m \
+#             -out=refresh-plan.tfplan
+#           code=$?
+#           set -e
 
-          case "$code" in
-            0)
-              echo "drift=false" >> "$GITHUB_OUTPUT"
-              echo "No drift detected." >> "$GITHUB_STEP_SUMMARY"
-              ;;
-            2)
-              echo "drift=true" >> "$GITHUB_OUTPUT"
-              echo "Drift detected. A remediation plan will be generated." \
-                >> "$GITHUB_STEP_SUMMARY"
-              ;;
-            *)
-              echo "::error::Terraform refresh-only plan failed (exit code $code)."
-              exit "$code"
-              ;;
-          esac
+#           case "$code" in
+#             0)
+#               echo "drift=false" >> "$GITHUB_OUTPUT"
+#               echo "No drift detected." >> "$GITHUB_STEP_SUMMARY"
+#               ;;
+#             2)
+#               echo "drift=true" >> "$GITHUB_OUTPUT"
+#               echo "Drift detected. A remediation plan will be generated." \
+#                 >> "$GITHUB_STEP_SUMMARY"
+#               ;;
+#             *)
+#               echo "::error::Terraform refresh-only plan failed (exit code $code)."
+#               exit "$code"
+#               ;;
+#           esac
 
-      - name: Create remediation plan
-        if: steps.refresh.outputs.drift == 'true'
-        run: |
-          terraform plan \
-            -input=false \
-            -no-color \
-            -lock-timeout=5m \
-            -out=tfplan
+#       - name: Create remediation plan
+#         if: steps.refresh.outputs.drift == 'true'
+#         run: |
+#           terraform plan \
+#             -input=false \
+#             -no-color \
+#             -lock-timeout=5m \
+#             -out=tfplan
 
-      - name: Add plan summary
-        if: steps.refresh.outputs.drift == 'true'
-        run: |
-          {
-            echo "## Drift remediation plan"
-            echo ""
-            echo "Review the saved plan before approving remediation."
-            echo ""
-            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          } >> "$GITHUB_STEP_SUMMARY"
+#       - name: Add plan summary
+#         if: steps.refresh.outputs.drift == 'true'
+#         run: |
+#           {
+#             echo "## Drift remediation plan"
+#             echo ""
+#             echo "Review the saved plan before approving remediation."
+#             echo ""
+#             echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+#           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload remediation plan
-        if: steps.refresh.outputs.drift == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: drift-plan-${{ github.run_id }}
-          path: tfplan
-          if-no-files-found: error
-          retention-days: 1
+#       - name: Upload remediation plan
+#         if: steps.refresh.outputs.drift == 'true'
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: drift-plan-${{ github.run_id }}
+#           path: tfplan
+#           if-no-files-found: error
+#           retention-days: 1
 
-  notify:
-    name: Notify drift detected
-    needs: detect
-    if: needs.detect.outputs.drift == 'true'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
+#   notify:
+#     name: Notify drift detected
+#     needs: detect
+#     if: needs.detect.outputs.drift == 'true'
+#     runs-on: ubuntu-24.04
+#     permissions:
+#       contents: read
 
-    steps:
-      - name: Notify Slack
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          test -n "$SLACK_WEBHOOK_URL"
+#     steps:
+#       - name: Notify Slack
+#         env:
+#           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+#           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+#         run: |
+#           set -euo pipefail
+#           test -n "$SLACK_WEBHOOK_URL"
 
-          message="Terraform drift detected. Review the remediation plan and approve the production deployment if appropriate: $RUN_URL"
+#           message="Terraform drift detected. Review the remediation plan and approve the production deployment if appropriate: $RUN_URL"
 
-          curl --fail --silent --show-error \
-            -X POST \
-            -H 'Content-type: application/json' \
-            --data "$(jq -n --arg text "$message" '{text: $text}')" \
-            "$SLACK_WEBHOOK_URL"
+#           curl --fail --silent --show-error \
+#             -X POST \
+#             -H 'Content-type: application/json' \
+#             --data "$(jq -n --arg text "$message" '{text: $text}')" \
+#             "$SLACK_WEBHOOK_URL"
 
-      - name: Notify by email
-        uses: dawidd6/action-send-mail@v4
-        with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "Terraform drift detected: review required"
-          to: ${{ secrets.EMAIL_TO }}
-          from: Terraform pipeline <${{ secrets.SMTP_USERNAME }}>
-          body: |
-            Terraform drift has been detected.
+#       - name: Notify by email
+#         uses: dawidd6/action-send-mail@v4
+#         with:
+#           server_address: ${{ secrets.SMTP_SERVER }}
+#           server_port: ${{ secrets.SMTP_PORT }}
+#           username: ${{ secrets.SMTP_USERNAME }}
+#           password: ${{ secrets.SMTP_PASSWORD }}
+#           subject: "Terraform drift detected: review required"
+#           to: ${{ secrets.EMAIL_TO }}
+#           from: Terraform pipeline <${{ secrets.SMTP_USERNAME }}>
+#           body: |
+#             Terraform drift has been detected.
 
-            Repository: ${{ github.repository }}
-            Branch: main
+#             Repository: ${{ github.repository }}
+#             Branch: main
 
-            Review the remediation plan and the deployment approval:
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+#             Review the remediation plan and the deployment approval:
+#             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-  remediate:
-    name: Apply approved remediation
-    needs: [detect, notify]
-    if: >-
-      needs.detect.outputs.drift == 'true' &&
-      needs.notify.result == 'success'
-    runs-on: ubuntu-24.04
-    environment: production
-    permissions:
-      contents: read
-      id-token: write
-    concurrency:
-      group: terraform-state-apply
-      cancel-in-progress: false
+#   remediate:
+#     name: Apply approved remediation
+#     needs: [detect, notify]
+#     if: >-
+#       needs.detect.outputs.drift == 'true' &&
+#       needs.notify.result == 'success'
+#     runs-on: ubuntu-24.04
+#     environment: production
+#     permissions:
+#       contents: read
+#       id-token: write
+#     concurrency:
+#       group: terraform-state-apply
+#       cancel-in-progress: false
 
-    steps:
-      - name: Checkout planned commit
-        uses: actions/checkout@v7
-        with:
-          ref: main
+#     steps:
+#       - name: Checkout planned commit
+#         uses: actions/checkout@v7
+#         with:
+#           ref: main
 
-      - name: Initialize Terraform
-        uses: ./.github/actions/tf-init
-        with:
-          aws-role: ${{ secrets.AWS_ROLE }}
-          aws-region: ${{ secrets.AWS_REGION || 'eu-north-1' }}
-          terraform-version: "1.16.6"
+#       - name: Initialize Terraform
+#         uses: ./.github/actions/tf-init
+#         with:
+#           aws-role: ${{ secrets.AWS_ROLE }}
+#           aws-region: ${{ secrets.AWS_REGION || 'eu-north-1' }}
+#           terraform-version: "1.16.6"
 
-      - name: Download remediation plan
-        uses: actions/download-artifact@v4
-        with:
-          name: drift-plan-${{ github.run_id }}
-          path: .
+#       - name: Download remediation plan
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: drift-plan-${{ github.run_id }}
+#           path: .
 
-      - name: Apply approved remediation
-        run: terraform apply -input=false -no-color tfplan
+#       - name: Apply approved remediation
+#         run: terraform apply -input=false -no-color tfplan
