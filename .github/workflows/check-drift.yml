@@ -192,7 +192,6 @@ jobs:
               '',
               '</details>',
               '',
-              '> The plan may contain sensitive infrastructure details. Handle this issue according to the repository access policy.'
             ].join('\n');
 
             const issue = await github.rest.issues.create({
@@ -222,7 +221,7 @@ jobs:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
-            text: "${{ needs.detect.outputs.drift == 'true' && steps.create_issue.outputs.issue_url != '' && format('Terraform drift detected. More information: <{0}|GitHub issue>', steps.create_issue.outputs.issue_url) || needs.detect.outputs.drift == 'true' && 'Terraform drift detected, but the GitHub issue could not be created. Review the workflow run.' || 'Terraform drift check failed. Review the workflow logs.' }}"
+            text: "${{ needs.detect.outputs.drift == 'true' && steps.create_issue.outputs.issue_url != '' && format('Terraform drift detected. Review the <{0}|report>', steps.create_issue.outputs.issue_url) || needs.detect.outputs.drift == 'true' && 'Terraform drift detected, but the GitHub issue could not be created. Review the workflow run.' || 'Terraform drift check failed. Review the workflow logs.' }}"
             attachments:
               - color: "${{ needs.detect.outputs.drift == 'true' && needs.detect.outputs.remediation_error != 'true' && 'warning' || 'danger' }}"
                 blocks:
@@ -247,4 +246,4 @@ jobs:
                   - type: section
                     text:
                       type: mrkdwn
-                      text: "${{ needs.detect.outputs.drift == 'true' && steps.create_issue.outputs.issue_url != '' && format('More information and the Terraform plan: <{0}|View GitHub issue>', steps.create_issue.outputs.issue_url) || needs.detect.outputs.drift == 'true' && 'The GitHub issue could not be created. Check the workflow run for details.' || format('<{0}|See workflow run and logs>', format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}"
+                      text: "${{ needs.detect.outputs.drift == 'true' && steps.create_issue.outputs.issue_url != '' && format('See detailed information here: <{0}|View GitHub issue>', steps.create_issue.outputs.issue_url) || needs.detect.outputs.drift == 'true' && 'The GitHub issue could not be created. Check the workflow run for details.' || format('<{0}|See workflow run and logs>', format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}"
