@@ -39,26 +39,33 @@ jobs:
         shell: bash
         run: |
           set +e
+
           terraform plan \
-            -refresh-only \
             -input=false \
             -no-color \
-            -detailed-exitcode 2>&1 | tee drift-plan.txt
+            -detailed-exitcode \
+            > drift-plan.txt 2>&1
 
-          exit_code=${PIPESTATUS[0]}
+          exit_code=$?
+
+          cat drift-plan.txt
+
+          echo "Terraform plan exit code: $exit_code"
 
           if [ "$exit_code" -eq 0 ]; then
             echo "detected=false" >> "$GITHUB_OUTPUT"
             echo "error=false" >> "$GITHUB_OUTPUT"
             echo "No drift detected."
+
           elif [ "$exit_code" -eq 2 ]; then
             echo "detected=true" >> "$GITHUB_OUTPUT"
             echo "error=false" >> "$GITHUB_OUTPUT"
-            echo "Infrastructure drift detected."
+            echo "Changes detected. Review the plan."
+
           else
             echo "detected=false" >> "$GITHUB_OUTPUT"
             echo "error=true" >> "$GITHUB_OUTPUT"
-            echo "Terraform drift detection failed."
+            echo "Terraform plan failed."
             exit 1
           fi
 
@@ -86,15 +93,13 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: terraform-drift-reports
-          path: |
-            drift-plan.txt
-            remediation-plan.txt
+          path: drift-plan.txt
           retention-days: 7
           if-no-files-found: warn
 
   notify:
     name: Notify Slack
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: detect
     if: always() && (needs.detect.outputs.drift == 'true' || needs.detect.outputs.drift_error == 'true' || needs.detect.outputs.remediation_error == 'true' || needs.detect.result == 'failure')
 
