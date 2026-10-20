@@ -96,7 +96,7 @@ resource "aws_iam_instance_profile" "test" {
 
 resource "aws_instance" "test" {
   ami                         = data.aws_ami.test.id
-  instance_type               = var.instance_type
+  instance_type               = "t4g.micro"
   subnet_id                   = aws_subnet.public[0].id
   vpc_security_group_ids      = [aws_security_group.test.id]
   iam_instance_profile        = aws_iam_instance_profile.test.name
