@@ -21,6 +21,9 @@ jobs:
     runs-on: ubuntu-26.04
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
       - name: Initialize Terraform and configure AWS credentials
         uses: ./.github/actions/tf-init
         with:
