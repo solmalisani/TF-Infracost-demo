@@ -1,0 +1,118 @@
+
+name: Terraform Drift Remediation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Generate remediation plan
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      plan_sha: ${{ steps.revision.outputs.sha }}
+
+    steps:
+      - name: Ensure remediation runs from main
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Run this workflow from the main branch."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Record checked-out revision
+        id: revision
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Initialize Terraform
+        uses: ./.github/actions/tf-init
+        with:
+          aws-role: ${{ secrets.AWS_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          terraform-version: "1.16.6"
+
+      - name: Generate saved Terraform plan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          terraform plan \
+            -input=false \
+            -no-color \
+            -out=tfplan
+
+          terraform show -no-color tfplan > remediation-plan.txt
+
+      - name: Publish plan for review
+        shell: bash
+        run: |
+          {
+            echo "## Terraform Drift Remediation Plan"
+            echo ""
+            echo "Review this plan before approving the apply job."
+            echo ""
+            echo '```terraform'
+            cat remediation-plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload saved plan
+        uses: actions/upload-artifact@v7
+        with:
+          name: terraform-remediation-plan
+          path: |
+            tfplan
+            remediation-plan.txt
+          retention-days: 1
+          if-no-files-found: error
+
+  apply:
+    name: Apply approved remediation
+    needs: plan
+    runs-on: ubuntu-24.04
+
+    environment: production-remediation
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout exact planned revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.plan_sha }}
+
+      - name: Initialize Terraform
+        uses: ./.github/actions/tf-init
+        with:
+          aws-role: ${{ secrets.AWS_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          terraform-version: "1.16.6"
+
+      - name: Download saved plan
+        uses: actions/download-artifact@v8
+        with:
+          name: terraform-remediation-plan
+          path: remediation
+
+      - name: Apply approved plan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          terraform apply \
+            -input=false \
+            -no-color \
+            remediation/tfplan

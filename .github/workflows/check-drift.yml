@@ -22,6 +22,14 @@ jobs:
       remediation_error: ${{ steps.remediation.outputs.error }}
 
     steps:
+      - name: Ensure remediation runs from main
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Run this workflow from the main branch."
+            exit 1
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
@@ -34,6 +42,11 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
           terraform-version: "1.16.6"
 
+      - name: Generate report timestamp
+        id: report
+        run: |
+          echo "timestamp=$(TZ=Europe/Amsterdam date '+%Y-%m-%d-%H-%M')" >> "$GITHUB_OUTPUT"
+
       - name: Check for infrastructure drift
         id: drift
         shell: bash
@@ -44,11 +57,11 @@ jobs:
             -input=false \
             -no-color \
             -detailed-exitcode \
-            > drift-plan.txt 2>&1
+            > "${{ steps.report.outputs.timestamp }}-drift-plan.txt" 2>&1
 
           exit_code=$?
 
-          cat drift-plan.txt
+          cat "${{ steps.report.outputs.timestamp }}-drift-plan.txt"
 
           echo "Terraform plan exit code: $exit_code"
 
@@ -92,8 +105,8 @@ jobs:
         if: always() && steps.drift.outputs.detected == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: terraform-drift-reports
-          path: drift-plan.txt
+          name: ${{ steps.report.outputs.timestamp }}-terraform-drift-report
+          path: ${{ steps.report.outputs.timestamp }}-drift-plan.txt
           retention-days: 7
           if-no-files-found: warn
 
