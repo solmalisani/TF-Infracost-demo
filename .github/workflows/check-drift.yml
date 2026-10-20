@@ -20,6 +20,7 @@ jobs:
       drift: ${{ steps.drift.outputs.detected }}
       drift_error: ${{ steps.drift.outputs.error }}
       remediation_error: ${{ steps.remediation.outputs.error }}
+      report_timestamp: ${{ steps.report.outputs.timestamp }}
 
     steps:
       - name: Ensure drift runs from main
