@@ -77,9 +77,50 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  notify:
+    name: Notify Slack for approval
+    needs: plan
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Send approval notification to Slack
+        uses: slackapi/slack-github-action@v4.0.0
+        continue-on-error: true
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: "⏳ Terraform remediation is pending approval. ${{ vars.REMEDIATION_APPROVER_SLACK_IDS }} Please review the plan and approve or reject the deployment."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: |
+                    ⏳ *Terraform remediation pending approval*
+
+                    ${{ vars.REMEDIATION_APPROVER_SLACK_IDS }}
+
+                    A Terraform remediation plan has been generated. The apply job is waiting for approval.
+
+                    *Repository:* `${{ github.repository }}`
+                    *Triggered by:* `${{ github.actor }}`
+
+                    Please review the plan before approving the deployment.
+              - type: actions
+                elements:
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: "Review plan & approve"
+                    url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    style: primary
+
   apply:
     name: Apply approved remediation
-    needs: plan
+    needs: [plan, notify]
     runs-on: ubuntu-24.04
 
     environment: production-remediation
