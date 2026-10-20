@@ -20,10 +20,9 @@ jobs:
       drift: ${{ steps.drift.outputs.detected }}
       drift_error: ${{ steps.drift.outputs.error }}
       remediation_error: ${{ steps.remediation.outputs.error }}
-      report_timestamp: ${{ steps.report.outputs.timestamp }}
 
     steps:
-      - name: Ensure remediation runs from main
+      - name: Ensure drift runs from main
         shell: bash
         run: |
           if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
@@ -107,9 +106,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.report.outputs.timestamp }}-terraform-drift-report
-          path: |
-            ${{ steps.report.outputs.timestamp }}-drift-plan.txt
-            remediation-plan.txt
+          path: ${{ steps.report.outputs.timestamp }}-drift-plan.txt
           retention-days: 7
           if-no-files-found: warn
 
@@ -124,22 +121,12 @@ jobs:
         id: timestamp
         run: echo "formatted=$(TZ=Europe/Amsterdam date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
 
-      - name: Download drift report
-        if: needs.detect.outputs.drift == 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.detect.outputs.report_timestamp }}-terraform-drift-report
-          path: drift-report
-
       - name: Send drift notification to Slack
-        id: slack_notification
         uses: slackapi/slack-github-action@v4.0.0
         with:
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          errors: true
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
-            channel: "${{ secrets.SLACK_CHANNEL_ID }}"
             text: "${{ needs.detect.outputs.drift == 'true' && 'Terraform drift detected. Review the report.' || 'Terraform drift check failed. Review the workflow logs.' }}"
             attachments:
               - color: "${{ needs.detect.outputs.drift == 'true' && needs.detect.outputs.remediation_error != 'true' && 'warning' || 'danger' }}"
@@ -166,10 +153,3 @@ jobs:
                     text:
                       type: mrkdwn
                       text: "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|See more: drift report and logs>"
-
-      - name: Send a saved artifact to a Slack workflow
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          payload-file-path: "drift-report/${{ needs.detect.outputs.report_timestamp }}-drift-plan.txt"
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: webhook-trigger
