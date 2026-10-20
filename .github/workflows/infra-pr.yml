@@ -14,8 +14,8 @@ on:
 
 permissions:
   contents: read
+  id-token: writeß
   pull-requests: write
-  id-token: write
 
 jobs:
   validate:
@@ -34,7 +34,6 @@ jobs:
 
       - name: Create Terraform plan
         id: plan
-        working-directory: head
         shell: bash
         run: |
           set +e
@@ -47,7 +46,7 @@ jobs:
         if: always() && steps.plan.outcome != 'skipped'
         uses: actions/github-script@v9
         env:
-          PLAN_FILE: head/tfplan.txt
+          PLAN_FILE: tfplan.txt
           PLAN_OUTCOME: ${{ steps.plan.outcome }}
           PLAN_EXIT_CODE: ${{ steps.plan.outputs.exit_code }}
         with:
