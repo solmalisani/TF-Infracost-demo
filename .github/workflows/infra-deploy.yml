@@ -1,166 +1,72 @@
 
-# name: Terraform Main Deployment
+name: Terraform PR deployment
 
-# on:
-#   push:
-#     branches: [main]
-#     paths:
-#       - '**/*.tf'
-#       - '**/*.tfvars'
-#       - '**/*.tfvars.json'
-#       - '.terraform.lock.hcl'
-#       - '**/*.tfbackend'
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - '**/*.tfvars.json'
+      - '**/.terraform.lock.hcl'
+      - '**/*.tfbackend'
 
-# permissions:
-#   contents: read
-#   id-token: write
+permissions:
+  contents: read
+  id-token: write
 
-# concurrency:
-#   group: terraform-main
-#   cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-26.04
 
-# env:
-#   TF_VERSION: "1.16.6"
-#   INFRACOST_VERSION: "v2.17.0"
-#   COST_THRESHOLD: "50"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
 
-# jobs:
-#   plan-and-estimate:
-#     runs-on: ubuntu-26.04
-#     outputs:
-#       requires_approval: ${{ steps.cost.outputs.requires_approval }}
-#       cost_increase: ${{ steps.cost.outputs.cost_increase }}
+      - name: Initialize Terraform and configure AWS credentials
+        uses: ./.github/actions/tf-init
+        with:
+          aws-role: ${{ secrets.AWS_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          terraform-version: "1.16.6"
 
-#     steps:
-#       - name: Checkout previous version
-#         uses: actions/checkout@v7
-#         with:
-#           ref: ${{ github.event.before }}
-#           path: base
+      - name: Terraform apply
+        shell: bash
+        run: |
+          terraform apply -input=false -auto-approve -no-color
 
-#       - name: Checkout merged version
-#         uses: actions/checkout@v7
-#         with:
-#           ref: ${{ github.sha }}
-#           path: head
+  notify:
+    name: Notify Slack
+    runs-on: ubuntu-26.04
+    needs: deploy
+    if: always()
 
-#       - name: Configure AWS credentials
-#         uses: aws-actions/configure-aws-credentials@v6.3.0
-#         with:
-#           role-to-assume: ${{ secrets.AWS_ROLE }}
-#           aws-region: ${{ secrets.AWS_REGION }}
-
-#       - name: Setup Terraform
-#         uses: hashicorp/setup-terraform@v3
-#         with:
-#           terraform_version: ${{ env.TF_VERSION }}
-#           terraform_wrapper: false
-
-#       - name: Terraform init
-#         working-directory: head
-#         run: terraform init -input=false
-
-#       - name: Create Terraform plan
-#         working-directory: head
-#         run: terraform plan -input=false -out=tfplan
-
-#       - uses: infracost/actions/diff@v5
-#         with:
-#           api-key: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
-#           base-path: base
-#           head-path: head
-
-#       # - name: Export plan as JSON
-#       #   working-directory: head
-#       #   run: terraform show -json tfplan > tfplan.json
-
-#       # - uses: infracost/actions/diff@v5
-#       #   with:
-#       #     api-key: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
-#       #     base-path: base
-#       #     head-path: head
-
-#       # - name: Upload Terraform plan
-#       #   uses: actions/upload-artifact@v4
-#       #   with:
-#       #     name: terraform-plan
-#       #     path: head/tfplan
-#       #     retention-days: 1
-
-#   # apply-automatically:
-#   #   needs: plan-and-estimate
-#   #   if: needs.plan-and-estimate.outputs.requires_approval == 'false'
-#   #   runs-on: ubuntu-26.04
-#   #   environment: production-auto
-
-#   #   steps:
-#   #     - name: Checkout merged version
-#   #       uses: actions/checkout@v7
-#   #       with:
-#   #         ref: ${{ github.sha }}
-#   #         path: head
-
-#   #     - name: Download Terraform plan
-#   #       uses: actions/download-artifact@v4
-#   #       with:
-#   #         name: terraform-plan
-#   #         path: head
-
-#   #     - name: Configure AWS credentials
-#   #       uses: aws-actions/configure-aws-credentials@v6.3.0
-#   #       with:
-#   #         role-to-assume: ${{ secrets.AWS_ROLE }}
-#   #         aws-region: ${{ secrets.AWS_REGION }}
-
-#   #     - name: Setup Terraform
-#   #       uses: hashicorp/setup-terraform@v3
-#   #       with:
-#   #         terraform_version: ${{ env.TF_VERSION }}
-#   #         terraform_wrapper: false
-
-#   #     - name: Terraform init
-#   #       working-directory: head
-#   #       run: terraform init -input=false
-
-#   #     - name: Apply saved plan
-#   #       working-directory: head
-#   #       run: terraform apply -input=false tfplan
-
-#   # apply-after-approval:
-#   #   needs: plan-and-estimate
-#   #   if: needs.plan-and-estimate.outputs.requires_approval == 'true'
-#   #   runs-on: ubuntu-26.04
-#   #   environment: production-approval
-
-#   #   steps:
-#   #     - name: Checkout merged version
-#   #       uses: actions/checkout@v7
-#   #       with:
-#   #         ref: ${{ github.sha }}
-#   #         path: head
-
-#   #     - name: Download Terraform plan
-#   #       uses: actions/download-artifact@v4
-#   #       with:
-#   #         name: terraform-plan
-#   #         path: head
-
-#   #     - name: Configure AWS credentials
-#   #       uses: aws-actions/configure-aws-credentials@v6.3.0
-#   #       with:
-#   #         role-to-assume: ${{ secrets.AWS_ROLE }}
-#   #         aws-region: ${{ secrets.AWS_REGION }}
-
-#   #     - name: Setup Terraform
-#   #       uses: hashicorp/setup-terraform@v3
-#   #       with:
-#   #         terraform_version: ${{ env.TF_VERSION }}
-#   #         terraform_wrapper: false
-
-#   #     - name: Terraform init
-#   #       working-directory: head
-#   #       run: terraform init -input=false
-
-#   #     - name: Apply saved plan
-#   #       working-directory: head
-#   #       run: terraform apply -input=false tfplan
+    steps:
+      - name: Send deployment result to Slack
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            attachments:
+              - color: "${{ needs.deploy.result == 'success' && 'good' || 'danger' }}"
+                blocks:
+                  - type: section
+                    text:
+                      type: mrkdwn
+                      text: >-
+                        ${{ needs.deploy.result == 'success' && ':white_check_mark: *Terraform deployment successful*' || ':x: *Terraform deployment failed*' }}
+                  - type: section
+                    fields:
+                      - type: mrkdwn
+                        text: "*Triggered by:*\n${{ github.actor }}"
+                      - type: mrkdwn
+                        text: "*Status:*\n${{ needs.deploy.result }}"
+                      - type: mrkdwn
+                        text: "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                      - type: mrkdwn
+                        text: "*Time (UTC):*\n${{ github.event.head_commit.timestamp }}"
+                  - type: section
+                    text:
+                      type: mrkdwn
+                      text: "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|See more: deployment logs>"
