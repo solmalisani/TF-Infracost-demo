@@ -42,6 +42,10 @@ jobs:
     if: always()
 
     steps:
+      - name: Format timestamp
+        id: timestamp
+        run: echo "formatted=$(TZ=Europe/Amsterdam date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
+
       - name: Send deployment result to Slack
         uses: slackapi/slack-github-action@v4.0.0
         with:
@@ -65,8 +69,8 @@ jobs:
                       - type: mrkdwn
                         text: "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
                       - type: mrkdwn
-                        text: "*Time (UTC):*\n${{ github.event.head_commit.timestamp }}"
+                        text: "*Time:*\n${{ steps.timestamp.outputs.formatted }}"
                   - type: section
                     text:
                       type: mrkdwn
-                      text: "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|See more: deployment logs>"
+                      text: "See more: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|deployment logs>"
