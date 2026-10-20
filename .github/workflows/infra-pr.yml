@@ -8,7 +8,8 @@ on:
     paths:
       - '**/*.tf'
       - '**/*.tfvars'
-      - '.terraform.lock.hcl'
+      - '**/*.tfvars.json'
+      - '**/.terraform.lock.hcl'
       - '**/*.tfbackend'
 
 permissions:
@@ -20,18 +21,22 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/infracost/ci:2
 
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: head
+    env:
+      INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/checkout@v7
+    steps:
+      - name: Checkout base
+        uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.base.ref }}
+          ref: ${{ github.event.pull_request.base.sha }}
           path: base
 
-      - uses: infracost/actions/diff@v5
+      - name: Checkout PR head
+        uses: actions/checkout@v7
         with:
-          api-key: ${{ secrets.INFRACOST_CLI_AUTHENTICATION_TOKEN }}
-          base-path: base
-          head-path: head
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+
+      - name: Calculate Infracost diff
+        run: infracost-ci diff --base-path base --head-path head
