@@ -11,7 +11,7 @@ variable "project" {
 
 variable "environment" {
   type    = string
-  default = "demo"
+  default = "Prod"
 }
 
 # Networking layer
