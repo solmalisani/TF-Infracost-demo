@@ -7,7 +7,7 @@ environment = "Prod"
 vpc_cidr = "10.0.0.0/16"
 
 # EC2 variables
-instance_type = "t3.large" #"t3.micro"
+instance_type = "t3.micro" #"t3.large"
 
 # DB variables
 db_instance_class = "db.t4g.micro"
