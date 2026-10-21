@@ -7,9 +7,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket = "dd-demo-sm"
-    key    = "terraform/state"
-    region = "eu-north-1"
+    bucket       = "dd-demo-sm"
+    key          = "terraform/state"
+    region       = "eu-north-1"
+    encrypt      = true
+    use_lockfile = true
   }
 
 }
