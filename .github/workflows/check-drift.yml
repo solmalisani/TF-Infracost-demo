@@ -262,3 +262,11 @@ jobs:
                     text:
                       type: mrkdwn
                       text: "${{ needs.detect.outputs.drift == 'true' && steps.create_issue.outputs.issue_url != '' && format('See detailed information here: <{0}|View GitHub issue>', steps.create_issue.outputs.issue_url) || needs.detect.outputs.drift == 'true' && 'The GitHub issue could not be created. Check the workflow run for details.' || format('<{0}|See workflow run and logs>', format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}"
+
+      - name: Publish drift summary
+        if: always()
+        shell: bash
+        env:
+          GH_ISSUE: ${{ steps.create_issue.outputs.issue_url }}
+        run: |
+          echo "## See detailed information here: ${GH_ISSUE}" >> "$GITHUB_STEP_SUMMARY"
