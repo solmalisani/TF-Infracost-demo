@@ -78,8 +78,6 @@ jobs:
               plan || 'No plan output was produced.',
               '```',
               '',
-              `Exit code: ${process.env.PLAN_EXIT_CODE || 'unknown'}`,
-              '',
               `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             ].join('\n');
 
