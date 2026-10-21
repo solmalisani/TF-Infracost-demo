@@ -102,6 +102,18 @@ jobs:
             echo "Terraform remediation plan failed."
           fi
 
+      - name: Publish drift summary
+        if: always() && steps.drift.outputs.detected == 'true'
+        shell: bash
+        env:
+          DRIFT: ${{ steps.drift.outputs.detected }}
+        run: |
+          if [[ "$DRIFT" == "true" ]]; then
+            echo "## ⚠️ Drift detected." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## ✅ No drift detected." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload drift reports
         if: always() && steps.drift.outputs.detected == 'true'
         uses: actions/upload-artifact@v7
