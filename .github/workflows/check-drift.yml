@@ -103,12 +103,15 @@ jobs:
           fi
 
       - name: Publish drift summary
-        if: always() && steps.drift.outputs.detected == 'true'
+        if: always()
         shell: bash
         env:
           DRIFT: ${{ steps.drift.outputs.detected }}
+          DRIFT_ERROR: ${{ steps.drift.outputs.error }}
         run: |
-          if [[ "$DRIFT" == "true" ]]; then
+          if [[ "$DRIFT_ERROR" == "true" || "${{ job.status }}" == "failure" ]]; then
+            echo "## ❌ Terraform drift check failed" >> "$GITHUB_STEP_SUMMARY"
+          elif [[ "$DRIFT" == "true" ]]; then
             echo "## ⚠️ Drift detected." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "## ✅ No drift detected." >> "$GITHUB_STEP_SUMMARY"
